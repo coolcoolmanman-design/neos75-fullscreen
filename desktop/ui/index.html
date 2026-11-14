@@ -13,7 +13,7 @@
   <header><div class="brand"><span class="brand-mark" aria-hidden="true">N<span>75</span></span><div>Neos75<small>全屏补丁 · 键盘小组件</small></div></div>
     <button class="connection glass" id="connect"><span class="dot" id="connection-dot"></span><span id="connection-label">检测键盘</span><span class="refresh" aria-hidden="true">↻</span></button>
   </header>
-  <nav class="tabs glass" aria-label="功能"><button id="tab-fullscreen" class="selected" aria-current="page">全屏补丁</button><button id="tab-widgets">小组件</button></nav>
+  <nav class="tabs glass" aria-label="功能"><button id="tab-fullscreen" class="selected" aria-current="page">全屏补丁</button><button id="tab-widgets">小组件</button><button id="tab-studio">整屏主题</button></nav>
   <main>
     <section id="fullscreen" aria-labelledby="full-title">
       <div class="intro"><p class="eyebrow">图片 / GIF</p><h1 id="full-title">图片与 GIF，全屏显示。</h1><p class="subtitle">让图片与 GIF 铺满键盘屏幕。<br>连接 USB，剩下的交给我们。</p>
@@ -58,6 +58,32 @@
         <div class="knob-grid" id="knob-grid"></div>
         <div class="knob-actions"><button class="secondary" id="knob-preview">预览改动</button><button class="primary" id="knob-apply">写入键盘</button><span class="hint" id="knob-state">尚未生成</span></div>
         <p class="hint">写入前会自动整片备份；写后逐字节回验，不一致就不固化。翻页只有屏幕旋钮的左右旋转可选。</p>
+      </div>
+    </section>
+    <section id="studio" aria-labelledby="studio-title" hidden>
+      <div class="widget-heading"><div><p class="eyebrow">Mac Studio</p><h1 id="studio-title">整屏主题</h1><p class="subtitle">KSS 风格 480×360 整屏构图。选主题或 auto，预览后推送。</p></div>
+        <div class="studio-heading-actions">
+          <label class="sr-only" for="studio-interval">刷新间隔</label>
+          <select id="studio-interval" aria-label="整屏主题刷新间隔"><option value="2">2 秒</option><option value="3" selected>3 秒</option><option value="5">5 秒</option><option value="10">10 秒</option></select>
+        </div>
+      </div>
+      <div class="widget-layout studio-layout">
+        <div class="editor studio-picker">
+          <div class="editor-heading"><h2>主题</h2><span class="hint" id="studio-playing" role="status">正在播放：—</span></div>
+          <p class="hint" id="studio-note">播放中可自动切到音乐主题；空闲回到霓虹时钟。</p>
+          <div class="studio-theme-list" id="studio-theme-list" role="radiogroup" aria-label="整屏主题"></div>
+        </div>
+        <div class="preview-column">
+          <div class="preview-heading"><h2>屏幕预览</h2><button class="icon-button" id="studio-refresh" aria-label="刷新整屏主题预览">↻</button></div>
+          <p class="hint" id="studio-resolved">当前：—</p>
+          <div class="screen-case preview-case"><div class="preview-surface"><img id="studio-preview-image" width="480" height="360" alt="整屏主题预览" hidden><p id="studio-preview-placeholder">选择主题后点预览</p></div></div>
+          <div class="sync-row studio-actions">
+            <button class="secondary" id="studio-preview">预览</button>
+            <button class="secondary" id="studio-push">推送一帧</button>
+            <button class="primary" id="studio-sync">开始同步</button>
+          </div>
+          <p class="hint" id="studio-sync-note">通过 USB 同步到键盘</p>
+        </div>
       </div>
     </section>
     <div class="status" id="status" role="status" aria-live="polite"><div class="status-icon" id="status-icon" aria-hidden="true">·</div><div><strong id="status-title">准备就绪</strong><p id="status-message">连接键盘后即可开始。</p><progress id="progress" max="100" value="0" hidden aria-label="补丁进度"></progress></div></div>

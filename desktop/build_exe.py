@@ -127,7 +127,7 @@ def main():
                 prebuild=f.parts[f.parts.index('prebuilds')+1]
                 if prebuild not in hid_prebuilds(sys.platform, node_arch):continue
             if folder=='dashboard' and '.history' in f.parts:continue  # 采样历史是运行时产物
-            if folder=='desktop' and f.suffix=='.py' and f.name!='dash_bridge.py':continue  # 只带桥接层，不带构建脚本
+            if folder=='desktop' and f.suffix=='.py' and f.name not in ('dash_bridge.py', 'studio_bridge.py'):continue  # 只带桥接层，不带构建脚本
             if folder!='node_modules' and (f.suffix in ['.bin','.pyc'] or f.name.endswith('.rollback.json')):continue
             dest=Path('project')/f.relative_to(ROOT).parent
             datas.append((str(f),dest.as_posix()))

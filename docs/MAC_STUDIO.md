@@ -2,6 +2,16 @@
 
 面向 macOS 的屏幕主题入口：把 Keyboard Screen Studio 最值得搬的整屏主题做到 480×360，并继续使用 Neos 的 USB 推送 / 全屏补丁 / 旋钮 / 原生文字。
 
+## 桌面程序（推荐）
+
+```bash
+python3 desktop/app.py
+```
+
+打开后切到 **整屏主题** 页签：选主题或 `auto` → 预览 → 推送一帧 / 开始同步。macOS 上会读 Music / Spotify 正在播放。
+
+打包产物（`Neos75-Fullscreen.app`）已纳入 `desktop/studio_bridge.py` 与 `dashboard/themes/`。
+
 ## 安装
 
 ```bash
@@ -37,6 +47,8 @@ python3 mac/studio.py loop --theme auto --interval 3
 
 ## 模块
 
+- `desktop/studio_bridge.py` — 玻璃桌面整屏主题桥接
+- `desktop/ui/` — 「整屏主题」页签
 - `mac/studio.py` — CLI 入口
 - `dashboard/themes/` — 整屏主题渲染
 - `dashboard/live_state_posix.py` — macOS/Linux 采样（psutil）

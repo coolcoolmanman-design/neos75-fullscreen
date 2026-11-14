@@ -4,7 +4,20 @@
 
 /* Fit the primary controls in the default desktop window. */
 .display-choice{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:8px 0;font-size:11px;color:var(--muted)}.display-choice .secondary{padding:8px 12px;min-height:44px;font-size:12px}.screen-navigation{margin-top:14px;padding-top:12px}.screen-navigation summary{font-size:12px;cursor:pointer}.search-row{display:flex;align-items:flex-start;gap:8px;margin-top:8px}.search-row input{flex:1;min-width:0}.search-row button{white-space:nowrap}#data-dialog label{font-size:13px;font-weight:600}#codex-thread{display:block;width:100%;padding:13px;border:1px solid #d1ddeb;border-radius:12px;margin-top:8px;background:#fff;font:inherit;font-size:13px}.city-results{display:grid;gap:8px}.city-results button{text-align:left;white-space:normal;overflow-wrap:anywhere;min-height:44px}#city-status,#codex-error{min-height:1.5em}#data-dialog .hint{font-size:12px}#display-mode{font-variant-numeric:tabular-nums}
-.shell{padding-top:22px}.tabs{margin-top:22px;margin-bottom:16px}.preview-case{max-width:400px}#fullscreen h1{font-size:34px}.row-actions .icon-button{width:44px;min-width:44px}.widget-heading{padding-top:10px}
+.shell{padding-top:22px}.tabs{width:min(420px,100%);margin-top:22px;margin-bottom:16px}.tabs button{width:33.33%}.preview-case{max-width:400px}#fullscreen h1{font-size:34px}.row-actions .icon-button{width:44px;min-width:44px}.widget-heading{padding-top:10px}
+
+/* ── 整屏主题（Mac Studio）─────────────────────────────────────── */
+.studio-heading-actions{display:flex;align-items:center;gap:10px}
+.studio-layout{margin-top:18px}
+.studio-picker .editor-heading{align-items:flex-start}
+.studio-theme-list{display:grid;gap:8px;margin-top:12px;max-height:360px;overflow:auto;scrollbar-width:thin}
+.studio-theme-chip{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;padding:12px 14px;border-radius:16px;border:1px solid #d3dfec;background:#fff;min-height:56px;width:100%}
+.studio-theme-chip strong{font-size:13px;font-weight:650}
+.studio-theme-chip span{font-size:11px;color:var(--muted);line-height:1.5}
+.studio-theme-chip.selected,.studio-theme-chip[aria-checked="true"]{border-color:#0068d9;background:#e8f1ff;box-shadow:0 0 0 3px rgba(0,104,217,.12)}
+.studio-actions{flex-wrap:wrap;margin-top:12px}
+.studio-actions .primary,.studio-actions .secondary{min-width:110px}
+#studio-resolved,#studio-playing{margin:0 0 8px;font-variant-numeric:tabular-nums}
 
 .native-panel{margin-top:26px;padding:20px 22px;border-radius:22px}
 .native-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}

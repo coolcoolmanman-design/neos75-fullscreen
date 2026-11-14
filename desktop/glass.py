@@ -23,6 +23,7 @@ import psutil
 from PIL import Image  # collected into the executable for the renderer module
 import app as core
 from data_sources import Sources, location, search_cities, THREAD_ID
+import studio_bridge
 
 
 def user_directory():
@@ -72,12 +73,24 @@ class Sampler:
         self._media_at = 0.0
 
     def _enrich_media(self):
-        """常驻读「正在播放」（SMTC）。
+        """常驻读「正在播放」。
 
-        必须用 Windows PowerShell 5.1：Windows.Media.Control 是 WinRT 组件，
-        PowerShell 7 没有 WinRT 投影，类型根本不存在。读不到就保持 None，
-        界面上写「未在播放」，绝不编造歌名。
+        Windows：SMTC via PowerShell 5.1（WinRT；PowerShell 7 无投影）。
+        macOS：Music / Spotify AppleScript（dashboard/media_mac.py）。
+        读不到就保持 None，界面写「未在播放」，绝不编造歌名。
         """
+        if sys.platform == 'darwin':
+            while not self._closed:
+                try:
+                    value = studio_bridge._now_playing()
+                except Exception:
+                    value = None
+                if value is not None:
+                    with self._extra_lock:
+                        self._media = value
+                        self._media_at = time.monotonic()
+                time.sleep(2)
+            return
         if sys.platform != 'win32':
             return
         exe = Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'System32' / 'WindowsPowerShell' / 'v1.0' / 'powershell.exe'
@@ -158,6 +171,9 @@ class Sampler:
             self._collecting = True
             threading.Thread(target=self._enrich, daemon=True).start()
             threading.Thread(target=self._enrich_media, daemon=True).start()
+        elif sys.platform == 'darwin' and not self._collecting:
+            self._collecting = True
+            threading.Thread(target=self._enrich_media, daemon=True).start()
         now = dt.datetime.now()
         mem = psutil.virtual_memory()
         net, tick = psutil.net_io_counters(), time.monotonic()
@@ -181,15 +197,23 @@ class Sampler:
         cpu_sensors = [e.current for name, values in sensors.items()
                        if any(key in name.lower() for key in ('cpu', 'coretemp', 'k10temp'))
                        for e in values if e.current is not None]
+        cpu = float(psutil.cpu_percent(interval=0.15))
+        mem_pct = float(mem.percent)
+        bat_pct = float(bat.percent) if bat else None
         result = dict(clock=now.strftime('%H:%M:%S'), date=now.strftime('%Y-%m-%d'),
+                    timestamp=now.isoformat(timespec='seconds'),
+                    time=now.strftime('%H:%M:%S'),
                     host=socket.gethostname(), ip=ip,
                     uptime=f'{seconds // 86400}d {seconds // 3600 % 24:02}:{seconds // 60 % 60:02}',
-                    cpu_load=psutil.cpu_percent(interval=0.15), cpu_freq_ghz=freq.current / 1000 if freq else None,
-                    mem_pct=mem.percent, mem_used_gb=mem.used / 2**30, mem_total_gb=mem.total / 2**30,
+                    cpu_load=cpu, cpu_percent=cpu, cpu=cpu,
+                    cpu_freq_ghz=freq.current / 1000 if freq else None,
+                    mem_pct=mem_pct, mem_percent=mem_pct, memory_percent=mem_pct,
+                    mem_used_gb=mem.used / 2**30, mem_total_gb=mem.total / 2**30,
                     disk_free_gb=psutil.disk_usage(str(Path.home().anchor)).free / 2**30,
                     net_down_mbps=down, net_up_mbps=up,
-                    bat_pct=bat.percent if bat else None, bat_ac=bat.power_plugged if bat else True,
-                    bat_charging=bool(bat and bat.power_plugged and bat.percent < 100),
+                    bat_pct=bat_pct, battery_percent=bat_pct,
+                    bat_ac=bat.power_plugged if bat else True,
+                    bat_charging=bool(bat and bat.power_plugged and bat.percent is not None and bat.percent < 100),
                     temp_c=max(cpu_sensors) if cpu_sensors else None, gpu_pct=None,
                     vol_pct=None, top_proc=None, top_proc_pct=None)
         with self._extra_lock:
@@ -198,6 +222,15 @@ class Sampler:
             # 30 秒没新数据就当没在播放，避免把一首老歌一直挂在屏幕上。
             fresh = self._media if time.monotonic() - self._media_at < 30 else None
         result['media'] = fresh
+        # Studio themes expect playing / music keys (macOS Now Playing or Windows SMTC).
+        if isinstance(fresh, dict):
+            result['playing'] = fresh
+            result['music'] = fresh
+        else:
+            empty = {'available': False, 'playing': False, 'is_playing': False,
+                     'title': '', 'artist': '', 'album': '', 'position': 0.0, 'duration': 0.0}
+            result['playing'] = empty
+            result['music'] = empty
         return result
 
 
@@ -222,14 +255,18 @@ class Api:
         self._rows = load_native_rows()
         self._knob_catalog = None
         self._knob_out = None
+        self._studio_catalog = studio_bridge.catalog()
         self._config = {'widgets': list(self._registry['presets']['minimal']), 'interval': 5,
                         'native_pages': [], 'native_interval': 3, 'theme': 'hades',
-                        'knob': dict(self._knob_defaults())}
+                        'knob': dict(self._knob_defaults()),
+                        'studio_theme': 'auto', 'studio_interval': 3}
         self._native = {'ready': None, 'rows': ['', '', '', ''], 'omitted': [],
                         'supported': [w['id'] for w in self._registry['widgets']
                                       if w['id'] in self._rows.TEXT_WIDGETS],
                         'unsupported': [w['id'] for w in self._registry['widgets']
                                         if w['id'] not in self._rows.TEXT_WIDGETS]}
+        self._studio_preview = None
+        self._studio_resolved = 'neon'
         self._last = None
         try:
             config = json.loads((self._dir / 'settings.json').read_text(encoding='utf-8'))
@@ -248,7 +285,8 @@ class Api:
                            message='连接键盘后即可开始。', progress=0, connected=False,
                            connection='未检测', stream=False, sent=0, restore=bool(self._last),
                            backup=None, error=False, native=False, nativeSent=0,
-                           nativeReady=None)
+                           nativeReady=None, studioTheme=self._config.get('studio_theme', 'auto'),
+                           studioResolved='neon', studioPlaying=False, studioTitle='')
 
     @classmethod
     def _knob_defaults(cls):
@@ -314,6 +352,20 @@ class Api:
             raise ValueError('配色无效：可选 ' + '、'.join(names) + '。')
         return key
 
+    def _studio_theme(self, value):
+        """整屏主题 id，或 auto。旧配置缺省时回 auto。"""
+        known = {t['id'] for t in self._studio_catalog.get('themes', [])}
+        key = str(value or 'auto').strip().lower()
+        if key != 'auto' and key not in known:
+            raise ValueError('整屏主题无效。')
+        return key
+
+    @staticmethod
+    def _studio_interval(value):
+        if value not in (2, 3, 5, 10):
+            raise ValueError('整屏主题刷新间隔无效。')
+        return value
+
     def _validate(self, config):
         ids = config['widgets']
         known = {w['id'] for w in self._registry['widgets']}
@@ -328,7 +380,9 @@ class Api:
                  'native_pages': self._page_selection(config.get('native_pages', [])),
                  'native_interval': self._native_interval(config.get('native_interval', 3)),
                  'theme': self._theme(config.get('theme')),
-                 'knob': self._knob_config(config.get('knob'))}
+                 'knob': self._knob_config(config.get('knob')),
+                 'studio_theme': self._studio_theme(config.get('studio_theme', 'auto')),
+                 'studio_interval': self._studio_interval(config.get('studio_interval', 3))}
         if 'weather' in config:
             valid['weather'] = location(config['weather'])
         if 'codex_thread' in config:
@@ -396,13 +450,17 @@ class Api:
                     native=native,
                     nativeNote='文字组件直接写入键盘内存：每屏四行、只支持英文与数字，中文会显示为空。',
                     themeNote='四套配色对应官方四种颜色：Hades 黑 / Selene 灰 / Venus 银 / Athena 白。',
+                    studio=copy.deepcopy(self._studio_catalog),
+                    studioNote='整屏主题是 480×360 一屏构图（非小组件网格），可预览后推送或持续同步。',
                     knob=self._knob_payload(),
                     sensorNote='温度、GPU、音量取决于系统数据源；不可用时显示 n/a。')
 
     def snapshot(self, revision=-1):
         with self._mutex:
             data = dict(state=copy.deepcopy(self._state), revision=self._revision, displayPage=self._display_page,
-                        text=list(self._native['rows']))
+                        text=list(self._native['rows']),
+                        studioPreview=self._studio_preview,
+                        studioResolved=self._studio_resolved)
             if revision != self._revision:
                 data['previews'] = list(self._preview)
             return data
@@ -700,11 +758,88 @@ class Api:
                 self._stop.set()
                 self._event(title='正在停止文字同步', message='等待当前帧写入结束。')
                 return {'ok': True}
+            if self._state['kind'] == 'studio-stream':
+                self._stop.set()
+                self._event(title='正在停止整屏主题', message='等待当前图片发送结束后停止。')
+                return {'ok': True}
             if self._state['kind'] != 'stream':
-                return {'ok': False, 'message': '当前没有组件同步任务。'}
+                return {'ok': False, 'message': '当前没有同步任务。'}
             self._stop.set()
             self._event(title='正在停止同步', message='等待当前图片发送结束后停止。')
         return {'ok': True}
+
+    def _studio_state(self):
+        state = self._read_state()
+        if 'weather' not in state and self._config.get('weather'):
+            try:
+                weather = getattr(self._sources, 'weather', None)
+                if weather is not None:
+                    state['weather'] = weather.read(self._config.get('weather'))
+            except Exception:
+                pass
+        return state
+
+    def _make_studio_frame(self, state=None):
+        state = state if state is not None else self._studio_state()
+        theme = self._config.get('studio_theme', 'auto')
+        tid, data = studio_bridge.render_jpeg(theme, state, quality=72, limit=30000)
+        uri = 'data:image/jpeg;base64,' + base64.b64encode(data).decode('ascii')
+        media = state.get('playing') or {}
+        with self._mutex:
+            self._studio_preview = uri
+            self._studio_resolved = tid
+            self._revision += 1
+            self._state.update(
+                studioTheme=theme,
+                studioResolved=tid,
+                studioPlaying=bool(media.get('playing') or media.get('is_playing')),
+                studioTitle=(media.get('title') or ''),
+            )
+        return tid, data
+
+    def studio_preview(self):
+        def work():
+            self._event(title='正在预览整屏主题', message='只读取电脑状态，不向键盘发送。')
+            with self._render_lock:
+                tid, _ = self._make_studio_frame()
+            self._event(title='整屏主题已更新', message='当前主题：%s' % tid, phase='idle')
+        return self._job('studio-preview', work)
+
+    def studio_push(self):
+        def work():
+            self._event(title='正在推送整屏主题', message='请关闭其他上传程序。', phase='stream')
+            with self._render_lock:
+                tid, data = self._make_studio_frame()
+            image = self._dir / 'studio-current.jpg'
+            image.write_bytes(data)
+            bridge = self._core.dash()
+            bridge.push_once('push', image=image, on_line=self._line, timeout=45)
+            self._event(connected=True, connection='USB 已连接', title='整屏主题已推送',
+                        message='已发送 %s，请在键盘屏幕确认。' % tid, phase='idle')
+        return self._job('studio-push', work)
+
+    def studio_start(self):
+        def work():
+            self._event(stream=True, sent=0, title='正在同步整屏主题', message='请关闭其他上传程序。', phase='stream')
+            bridge = self._core.dash()
+            sent = 0
+            while not self._stop.is_set():
+                begun = time.monotonic()
+                with self._render_lock:
+                    tid, data = self._make_studio_frame()
+                if self._stop.is_set():
+                    break
+                image = self._dir / 'studio-current.jpg'
+                image.write_bytes(data)
+                bridge.push_once('push', image=image, on_line=self._line, timeout=45)
+                sent += 1
+                self._event(sent=sent, connected=True, connection='USB 已连接',
+                            title='正在同步整屏主题',
+                            message='已发送 %s · 第 %d 帧，请看屏确认。' % (tid, sent), progress=0)
+                wait = max(0.1, float(self._config.get('studio_interval', 3)) - (time.monotonic() - begun))
+                self._stop.wait(wait)
+            self._event(title='整屏主题已停止', message='键盘保留最后发送的画面。', phase='idle', stream=False)
+        return self._job('studio-stream', work)
 
     def _make_frames(self, state):
         ids = list(self._config['widgets'])
@@ -852,7 +987,7 @@ class Api:
         # Never allow closing during a firmware job or in-flight USB transfer.
         with self._mutex:
             if self._state['busy']:
-                if self._state['kind'] == 'stream':
+                if self._state['kind'] in ('stream', 'studio-stream', 'native-stream'):
                     self._stop.set()
                 self._event(message='请等待当前操作结束后关闭窗口。')
                 return False

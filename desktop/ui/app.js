@@ -4,6 +4,7 @@ const symbols = {clock_big:'◷',date:'▦',cpu:'⌘',mem:'▥',gpu:'▧',temp:'
 const descriptions = {clock_big:'清晰的大号数字时钟',date:'今天的日期',cpu:'处理器使用率与主频',mem:'内存使用率与容量',gpu:'显卡使用率，无法读取时显示 n/a',temp:'系统提供的温度，无法读取时显示 n/a',history_cpu:'最近 60 次 CPU 使用率变化',top_proc:'累计 CPU 用时最多的进程',disk:'可用磁盘空间',net:'当前下载与上传速度',ip:'电脑当前 IPv4 地址',host:'这台电脑的名称',battery:'笔记本电量与供电状态',volume:'系统音量，无法读取时显示 n/a',uptime:'电脑从开机到现在的运行时间'};
 let api, registry, config, state = {}, previews = [], page = 0, displayPage = null, revision = -1, ready = false, pending = false, timer, confirmAction;
 let nativeInfo = {supported: [], unsupported: [], rows: ['', '', '', ''], omitted: [], ready: null}, nativeText = ['', '', '', ''];
+let studioInfo = {themes: [], auto: null}, studioPreview = null, studioResolved = 'neon';
 symbols.weather='☀'; symbols.codex='⌁';
 descriptions.weather='所选城市的温度与天气，10 分钟更新，断网标记缓存';
 descriptions.codex='本机 Codex 任务事件状态与更新时间，不显示聊天正文';
@@ -11,7 +12,7 @@ function toast(message) { $('toast').textContent = message; $('toast').hidden = 
 async function call(name, ...args) { try { return await api[name](...args); } catch (e) { toast('操作失败，请查看诊断或重新打开程序。'); console.error(e); return {ok:false}; } }
 function el(tag, cls, text) { const n = document.createElement(tag); if(cls) n.className = cls; if(text !== undefined) n.textContent = text; return n; }
 function openDialog(id) { if(!$(id).open) $(id).showModal(); }
-function showTab(name) { $('fullscreen').hidden = name !== 'fullscreen'; $('widgets').hidden = name !== 'widgets'; for(const x of ['fullscreen','widgets']) { const b = $('tab-'+x); b.classList.toggle('selected',x===name); if(x===name) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current'); } if(name==='widgets' && ready && !state.busy && !previews.length) refreshPreview(); }
+function showTab(name) { $('fullscreen').hidden = name !== 'fullscreen'; $('widgets').hidden = name !== 'widgets'; $('studio').hidden = name !== 'studio'; for(const x of ['fullscreen','widgets','studio']) { const b = $('tab-'+x); b.classList.toggle('selected',x===name); if(x===name) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current'); } if(name==='widgets' && ready && !state.busy && !previews.length) refreshPreview(); if(name==='studio' && ready && !state.busy && !studioPreview) refreshStudio(); }
 function updatePreview() { const has = previews.length > 0 && config.widgets.length > 0; page = previews.length ? ((page % previews.length) + previews.length) % previews.length : 0; $('preview-image').hidden = !has; $('preview-placeholder').hidden = has; if(has) $('preview-image').src = previews[page]; $('page-label').textContent = has ? `${page+1} / ${previews.length} 页 · 480 × 360` : '480 × 360'; $('prev-page').disabled = $('next-page').disabled = previews.length < 2; }
 function renderList() { const list = $('widget-list'); list.replaceChildren(); $('widget-count').textContent = config.widgets.length; $('empty').hidden = config.widgets.length > 0;
   config.widgets.forEach((id,i) => { const w = registry.widgets.find(x=>x.id===id); const row = el('li','widget-row'); row.append(el('span','widget-symbol',symbols[id]||'◇')); const title = el('span','widget-name',w.label); title.append(el('small','',w.group)); row.append(title); const actions = el('div','row-actions');
@@ -39,9 +40,72 @@ function paint() { const busy=!!state.busy; $('connection-label').textContent = 
   paintNative(busy);
   paintKnob(busy);
   paintThemes(busy);
+  paintStudio(busy);
+}
+function updateStudioPreview() {
+  const has = !!studioPreview;
+  $('studio-preview-image').hidden = !has;
+  $('studio-preview-placeholder').hidden = has;
+  if (has) $('studio-preview-image').src = studioPreview;
+  $('studio-resolved').textContent = '当前：' + (studioResolved || '—');
+}
+function paintStudio(busy) {
+  const list = $('studio-theme-list');
+  if (!list) return;
+  const items = [];
+  if (studioInfo.auto) items.push(studioInfo.auto);
+  for (const t of studioInfo.themes || []) items.push(t);
+  if (list.dataset.count !== String(items.length)) {
+    list.replaceChildren();
+    for (const t of items) {
+      const b = el('button', 'studio-theme-chip');
+      b.type = 'button';
+      b.dataset.theme = t.id;
+      b.setAttribute('role', 'radio');
+      b.append(el('strong', '', t.name || t.id));
+      if (t.desc) b.append(el('span', '', t.desc));
+      b.onclick = async () => {
+        if (busy || state.busy || (config.studio_theme || 'auto') === t.id) return;
+        await save({...config, studio_theme: t.id});
+        await refreshStudio();
+      };
+      list.append(b);
+    }
+    list.dataset.count = String(items.length);
+  }
+  const current = config.studio_theme || 'auto';
+  for (const b of list.querySelectorAll('button')) {
+    const on = b.dataset.theme === current;
+    b.classList.toggle('selected', on);
+    b.setAttribute('aria-checked', String(on));
+    b.disabled = !!busy;
+  }
+  if ($('studio-interval')) {
+    $('studio-interval').value = String(config.studio_interval ?? 3);
+    $('studio-interval').disabled = !!busy;
+  }
+  const playing = !!state.studioPlaying;
+  const title = state.studioTitle || '';
+  $('studio-playing').textContent = playing
+    ? ('正在播放：' + (title || '有媒体'))
+    : (title ? ('已暂停：' + title) : '正在播放：无');
+  if (state.studioResolved) studioResolved = state.studioResolved;
+  updateStudioPreview();
+  for (const id of ['studio-refresh', 'studio-preview', 'studio-push']) $(id).disabled = !!busy;
+  const streaming = state.kind === 'studio-stream';
+  $('studio-sync').disabled = streaming ? false : !!busy;
+  $('studio-sync').textContent = streaming ? '停止同步' : '开始同步';
+  $('studio-sync-note').textContent = streaming
+    ? (`已发送 ${state.sent || 0} 帧 · 请看屏确认`)
+    : '通过 USB 同步到键盘';
+}
+async function refreshStudio() {
+  const r = await call('studio_preview');
+  if (!r.ok && r.message) toast(r.message);
+  await poll();
 }
 let polling=false;
-async function poll() { if(!ready || polling) return; polling=true; try { const r=await api.snapshot(revision); state=r.state; displayPage=r.displayPage??null; if(r.text) nativeText=r.text; if(r.previews) { previews=r.previews; revision=r.revision; updatePreview(); } paint(); } catch(e) { $('status-title').textContent='连接程序失败'; $('status-message').textContent='请关闭窗口后重新打开程序。'; } finally { polling=false; } }
+async function poll() { if(!ready || polling) return; polling=true; try { const r=await api.snapshot(revision); state=r.state; displayPage=r.displayPage??null; if(r.text) nativeText=r.text; if(r.previews) { previews=r.previews; revision=r.revision; updatePreview(); } if(r.studioPreview) studioPreview=r.studioPreview; if(r.studioResolved) studioResolved=r.studioResolved; paint(); } catch(e) { $('status-title').textContent='连接程序失败'; $('status-message').textContent='请关闭窗口后重新打开程序。'; } finally { polling=false; } }
 function confirm(title,copy,button,fn) { $('confirm-title').textContent=title; $('confirm-copy').textContent=copy; $('confirm-action').textContent=button; confirmAction=fn; openDialog('confirmation'); }
 function nativePages() { return config.native_pages || []; }
 // ── 旋钮配置 ─────────────────────────────────────────────────────
@@ -169,8 +233,8 @@ function paintThemes(busy) { const root=$('theme-chips'); const list=(registry&&
     b.querySelector('.swatch').style.background=`linear-gradient(135deg,${t.swatch||'#222'} 0%,${t.swatch2||t.swatch||'#888'} 100%)`;
     b.disabled=busy||!!state.busy; b.setAttribute('aria-checked', t.id===current?'true':'false'); } }
 
-async function boot(bridge) { if(ready) return; api=bridge; const data=await api.bootstrap(); registry=data.registry; config=data.config; if(data.native) nativeInfo={...nativeInfo,...data.native}; if(data.knob) { knobInfo={...knobInfo,...data.knob}; knobInfo.config={...(data.config.knob||{})}; } ready=true; $('version').textContent=`v${data.version}`; $('backup-path').textContent=data.backupDirectory; renderList(); renderCatalog(); await poll(); setInterval(poll,700); }
-$('tab-fullscreen').onclick=()=>showTab('fullscreen'); $('tab-widgets').onclick=()=>showTab('widgets');
+async function boot(bridge) { if(ready) return; api=bridge; const data=await api.bootstrap(); registry=data.registry; config=data.config; if(data.native) nativeInfo={...nativeInfo,...data.native}; if(data.knob) { knobInfo={...knobInfo,...data.knob}; knobInfo.config={...(data.config.knob||{})}; } if(data.studio) studioInfo={...studioInfo,...data.studio}; if(data.studioNote) $('studio-note').textContent=data.studioNote; ready=true; $('version').textContent=`v${data.version}`; $('backup-path').textContent=data.backupDirectory; renderList(); renderCatalog(); paintStudio(false); await poll(); setInterval(poll,700); }
+$('tab-fullscreen').onclick=()=>showTab('fullscreen'); $('tab-widgets').onclick=()=>showTab('widgets'); $('tab-studio').onclick=()=>showTab('studio');
 $('connect').onclick=async()=>{const r=await call('connect');if(!r.ok)toast(r.message);await poll();};
 $('patch').onclick=()=>{const force=$('force').checked; confirm(force?'无验证应用补丁':'应用全屏补丁',force?'程序会先备份，再按旧字节逐条核对能套上几层补丁。若一层都对不上，只会套最基础的一层：上传进度条和覆盖层会保留，其余功能照常。固定偏移仍可能不兼容，并有导致屏幕无法启动的风险。仍然继续？':'程序会先保存这把键盘的完整备份，再自动匹配固件、应用补丁并回验。已是全屏版本则直接跳过；未知版本会停止。部分适配配置尚待实机验收。','备份并应用',()=>call('patch',true,force));};
 $('confirm-action').onclick=async()=>{ $('confirmation').close(); const result=await confirmAction(); if(!result.ok)toast(result.message); await poll(); };
@@ -209,3 +273,21 @@ window.addEventListener('neos75previewready',()=>boot(window.neos75Preview));
 $('knob-preview').onclick = knobBuild;
 $('knob-apply').onclick = knobApply;
 $('knob-reset').onclick = knobReset;
+$('studio-refresh').onclick = refreshStudio;
+$('studio-preview').onclick = refreshStudio;
+$('studio-interval').onchange = async e => save({...config, studio_interval: Number(e.target.value)});
+$('studio-push').onclick = async () => {
+  confirm('推送整屏主题', '当前屏幕图片会被替换为整屏主题画面。请先关闭官方程序的上传任务。', '推送一帧', async () => {
+    const r = await call('studio_push');
+    await poll();
+    return r;
+  });
+};
+$('studio-sync').onclick = async () => {
+  if (state.kind === 'studio-stream') { await call('stop'); await poll(); return; }
+  confirm('开始同步整屏主题', '会按刷新间隔持续渲染并推送。媒体自动模式下，播放中会切到音乐主题。', '开始同步', async () => {
+    const r = await call('studio_start');
+    await poll();
+    return r;
+  });
+};
