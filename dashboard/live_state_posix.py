@@ -37,8 +37,10 @@ class Sampler:
 
         bat = psutil.sensors_battery()
         try:
-            freq = psutil.cpu_freq()
-        except (OSError, NotImplementedError, RuntimeError):
+            # Apple Silicon builds of psutil may omit cpu_freq entirely.
+            freq_fn = getattr(psutil, "cpu_freq", None)
+            freq = freq_fn() if callable(freq_fn) else None
+        except (OSError, NotImplementedError, RuntimeError, AttributeError):
             freq = None
 
         ip = next(

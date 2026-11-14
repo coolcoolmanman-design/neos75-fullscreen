@@ -28,6 +28,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+# Windows CI consoles default to a legacy code page; keep list/dry JSON printable.
+for stream in (sys.stdout, sys.stderr):
+    reconfigure = getattr(stream, "reconfigure", None)
+    if callable(reconfigure):
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
 from dashboard.live_state_posix import Sampler  # noqa: E402
 from dashboard.themes import list_themes, render_theme_jpeg, resolve_theme_id  # noqa: E402
 

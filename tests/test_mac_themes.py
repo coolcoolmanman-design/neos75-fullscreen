@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import subprocess
 import sys
 import unittest
@@ -86,10 +87,16 @@ class SamplerAndMedia(unittest.TestCase):
 
 class StudioCli(unittest.TestCase):
     def test_list_and_dry(self):
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "utf-8"
+        env["PYTHONUTF8"] = "1"
         list_out = subprocess.check_output(
             [sys.executable, str(ROOT / "mac" / "studio.py"), "list"],
             cwd=str(ROOT),
             text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
         )
         self.assertIn("neon", list_out)
         dry = subprocess.check_output(
@@ -97,6 +104,9 @@ class StudioCli(unittest.TestCase):
              str(ROOT / "build" / "test-theme-neon.jpg")],
             cwd=str(ROOT),
             text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
         )
         payload = json.loads(dry.strip().splitlines()[-1])
         self.assertEqual(payload["event"], "dry")
