@@ -106,4 +106,16 @@ jobs:
       - name: Publish executables
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" release/* --title "Neos75 全屏工具 $GITHUB_REF_NAME" --notes-file docs/release-${GITHUB_REF_NAME}.md
+        run: |
+          # Retags often leave an existing Release (notes-only). Prefer upload/clobber
+          # so Mac/Windows/Linux artifacts still land on the same tag.
+          notes="docs/release-${GITHUB_REF_NAME}.md"
+          title="Neos75 全屏工具 $GITHUB_REF_NAME"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release/* --clobber
+            if [[ -f "$notes" ]]; then
+              gh release edit "$GITHUB_REF_NAME" --title "$title" --notes-file "$notes"
+            fi
+          else
+            gh release create "$GITHUB_REF_NAME" release/* --title "$title" --notes-file "$notes"
+          fi
