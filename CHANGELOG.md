@@ -1,5 +1,15 @@
 # 更新记录
 
+## fork/mac-studio-draft — Mac Studio 一稿
+
+基于 upstream neos75-fullscreen，增加 macOS 向屏幕主题工作室：
+
+- 新增 `mac/studio.py`：dry / once / loop，默认 `auto` 媒体切主题
+- 新增 `dashboard/themes/`：neon / flip / dot / music / stock / perf / desk 整屏主题
+- 新增 `dashboard/live_state_posix.py`、`dashboard/media_mac.py`
+- 保留 USB `push.js`、全屏补丁、旋钮、原生文字等 Neos 能力
+
+
 ## v1.10.0 — 2026-11-06
 
 屏幕能显示的东西多了一类：从「只有数字」变成「也能看歌、看日子、看链路」。

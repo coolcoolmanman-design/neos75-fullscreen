@@ -1,5 +1,20 @@
 # AULA Neos75 全屏补丁与键盘小组件
 
+## Mac Studio 一稿（本 fork）
+
+面向 macOS 的屏幕主题入口：把 Keyboard Screen Studio 最值得搬的整屏主题做到 480×360，并继续使用 Neos 的 USB 推送 / 全屏补丁 / 旋钮 / 原生文字。
+
+```bash
+pip install -r requirements-mac.txt
+python3 mac/studio.py list
+python3 mac/studio.py dry --theme neon
+python3 mac/studio.py loop --theme auto
+```
+
+说明：[docs/MAC_STUDIO.md](docs/MAC_STUDIO.md)
+
+---
+
 把官方自定义媒体页从右侧320×320区域扩展为 **480×360全屏**，隐藏左侧状态条。2026-11-02已在一台Neos75上刷入并逐字节回验，用户确认：**图片和GIF都全屏正常**。
 
 ![全屏验收测试动画](examples/fullscreen-test.gif)
